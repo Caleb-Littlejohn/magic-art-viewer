@@ -1,0 +1,7 @@
+node_modules/
+cards.json
+cards-meta.json
+cards-import.sql
+cards-import-*.sql
+.wrangler/
+.git/

@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Magic Art Viewer</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <style>
+    body {
+      background-color: #1a1a2e;
+      color: #e0e0e0;
+    }
+
+    h1 {
+      color: #c9a84c;
+      font-family: Georgia, serif;
+      letter-spacing: 0.05em;
+    }
+
+    .card-row {
+      margin-bottom: 2rem;
+    }
+
+    .card-row-label {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #c9a84c;
+      margin-bottom: 0.5rem;
+      border-left: 3px solid #c9a84c;
+      padding-left: 0.6rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Quantity stepper */
+    .qty-stepper {
+      display: inline-flex;
+      align-items: stretch;
+      background: #2a2a4a;
+      border-radius: 5px;
+      overflow: hidden;
+      border: 1px solid #444466;
+      flex-shrink: 0;
+    }
+
+    .qty-btn {
+      background: none;
+      border: none;
+      color: #c9a84c;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 0 0.45rem;
+      cursor: pointer;
+      line-height: 1.8;
+      transition: background 0.1s;
+    }
+
+    .qty-btn:hover { background: #3a3a5a; }
+
+    .qty-display {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #e0e0e0;
+      min-width: 1.8rem;
+      text-align: center;
+      padding: 0 0.25rem;
+      border-left: 1px solid #444466;
+      border-right: 1px solid #444466;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Color pips */
+    .color-pips {
+      display: inline-flex;
+      gap: 0.2rem;
+      flex-shrink: 0;
+    }
+    .color-pip {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.4);
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .pip-W { background: #f9faf4; }
+    .pip-U { background: #0e68ab; }
+    .pip-B { background: #4a4a4a; }
+    .pip-R { background: #d3202a; }
+    .pip-G { background: #00733e; }
+    .pip-C { background: #b0b0b0; }
+
+    .art-scroll-container {
+      display: flex;
+      overflow-x: auto;
+      gap: 0.75rem;
+      padding-bottom: 0.5rem;
+      scrollbar-width: thin;
+      scrollbar-color: #c9a84c #2a2a4a;
+    }
+
+    .art-scroll-container::-webkit-scrollbar {
+      height: 6px;
+    }
+
+    .art-scroll-container::-webkit-scrollbar-track {
+      background: #2a2a4a;
+      border-radius: 3px;
+    }
+
+    .art-scroll-container::-webkit-scrollbar-thumb {
+      background-color: #c9a84c;
+      border-radius: 3px;
+    }
+
+    .art-card {
+      flex: 0 0 auto;
+      width: 160px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .art-card:hover {
+      transform: scale(1.04);
+      box-shadow: 0 4px 20px rgba(201, 168, 76, 0.4);
+    }
+
+    /* Image wrapper — holds the card img + selection overlay */
+    .img-wrapper {
+      position: relative;
+      cursor: pointer;
+      border-radius: 8px;
+      overflow: hidden;
+      line-height: 0;
+    }
+
+    .img-wrapper img {
+      width: 100%;
+      display: block;
+      border-radius: 8px;
+    }
+
+    /* Semi-opaque white selection overlay */
+    .select-overlay {
+      position: absolute;
+      inset: 0;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.52);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      pointer-events: none;
+    }
+
+    .select-overlay svg {
+      width: 52px;
+      height: 52px;
+      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+    }
+
+    .art-card.selected .select-overlay {
+      opacity: 1;
+    }
+
+    /* Meta row below card */
+    .art-meta {
+      font-size: 0.70rem;
+      color: #aaaacc;
+      margin-top: 0.35rem;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      min-width: 0;
+    }
+
+    .art-meta-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .tcg-link {
+      flex-shrink: 0;
+      font-size: 0.62rem;
+      color: #e6a817;
+      text-decoration: none;
+      border: 1px solid #e6a817;
+      border-radius: 3px;
+      padding: 0 0.28rem;
+      line-height: 1.5;
+      white-space: nowrap;
+    }
+
+    .tcg-link:hover {
+      background: #e6a817;
+      color: #1a1a2e;
+    }
+
+    /* Frame type badge */
+    .frame-badge {
+      flex-shrink: 0;
+      font-size: 0.60rem;
+      font-weight: 600;
+      border-radius: 3px;
+      padding: 0 0.28rem;
+      line-height: 1.55;
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .frame-badge-ext  { background: #2d4a6e; color: #7ec8f5; }
+    .frame-badge-show { background: #3a2d5c; color: #c4a7f5; }
+    .frame-badge-bord { background: #1a3d2b; color: #5de88e; }
+    .frame-badge-promo{ background: #4a2d1a; color: #f5a96e; }
+    .frame-badge-full { background: #2e3a1a; color: #b5e05a; }
+
+    .error-badge {
+      color: #f87171;
+      font-size: 0.9rem;
+      padding: 0.4rem 0.6rem;
+    }
+
+    #results {
+      margin-top: 2rem;
+      opacity: 1;
+      transition: opacity 0.35s ease;
+    }
+
+    #results.loading {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Global loading overlay */
+    #load-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 8000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1rem;
+      background: rgba(26, 26, 46, 0.75);
+      backdrop-filter: blur(3px);
+    }
+
+    #load-overlay.active {
+      display: flex;
+    }
+
+    .overlay-spinner {
+      width: 3rem;
+      height: 3rem;
+      border: 4px solid #c9a84c;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    #load-overlay-label {
+      color: #c9a84c;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    textarea.form-control {
+      background-color: #12122a;
+      color: #e0e0e0;
+      border-color: #444466;
+    }
+
+    textarea.form-control::placeholder {
+      color: #555577;
+      font-style: italic;
+      font-size: 0.85rem;
+    }
+
+    textarea.form-control:focus {
+      background-color: #12122a;
+      color: #e0e0e0;
+      border-color: #c9a84c;
+      box-shadow: 0 0 0 0.2rem rgba(201, 168, 76, 0.25);
+    }
+
+    .btn-load {
+      background-color: #c9a84c;
+      border-color: #c9a84c;
+      color: #1a1a2e;
+      font-weight: 600;
+    }
+
+    .btn-load:hover {
+      background-color: #e0c060;
+      border-color: #e0c060;
+      color: #1a1a2e;
+    }
+
+    .btn-export {
+      background-color: #22c55e;
+      border-color: #22c55e;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .btn-export:hover:not(:disabled) {
+      background-color: #16a34a;
+      border-color: #16a34a;
+      color: #fff;
+    }
+
+    .btn-export:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .btn-clear {
+      background-color: transparent;
+      border-color: #555577;
+      color: #aaaacc;
+    }
+
+    .btn-clear:hover {
+      background-color: #2a2a4a;
+      border-color: #888899;
+      color: #e0e0e0;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 1.2rem;
+      height: 1.2rem;
+      border: 2px solid #c9a84c;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 0.4rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Sync footer */
+    #sync-footer {
+      position: fixed;
+      bottom: 0.75rem;
+      left: 1rem;
+      font-size: 0.72rem;
+      color: #444466;
+      pointer-events: none;
+    }
+
+    /* Remove row button */
+    .btn-remove-row {
+      background: none;
+      border: none;
+      color: #555577;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0 0.2rem;
+      cursor: pointer;
+      margin-left: auto;
+      flex-shrink: 0;
+      transition: color 0.15s;
+    }
+    .btn-remove-row:hover { color: #f87171; }
+
+    /* Hide-similar-art checkbox */
+    .sim-check-label {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-size: 0.82rem;
+      color: #aaaacc;
+      cursor: pointer;
+      user-select: none;
+      padding: 0.4rem 0.7rem;
+      border: 1px solid #555577;
+      border-radius: 5px;
+      background: transparent;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .sim-check-label:hover {
+      background: #2a2a4a;
+      border-color: #888899;
+      color: #e0e0e0;
+    }
+    /* hide the native checkbox */
+    .sim-check-label input[type=checkbox] { display: none; }
+    /* custom box */
+    .sim-check-box {
+      width: 1rem;
+      height: 1rem;
+      border: 1.5px solid #555577;
+      border-radius: 3px;
+      background: #12122a;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .sim-check-box svg { display: none; }
+    .sim-check-label:has(input:checked) {
+      border-color: #c9a84c;
+      color: #c9a84c;
+      background: #1e1a0e;
+    }
+    .sim-check-label:has(input:checked) .sim-check-box {
+      border-color: #c9a84c;
+      background: #c9a84c;
+    }
+    .sim-check-label:has(input:checked) .sim-check-box svg { display: block; }
+
+    /* Toast notification */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: #22c55e;
+      color: #fff;
+      padding: 0.6rem 1.1rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    #toast.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container py-5">
+    <h1 class="mb-1">MTG Art Selector</h1>
+    <p class="text-secondary mb-4">Paste card names below — one per line — to browse every printing. Click an art to select it, then export your picks as a deck list.</p>
+
+    <div class="row g-2 align-items-stretch">
+      <div class="col-12 col-md-9" style="display:flex;">
+        <textarea
+          id="cardInput"
+          class="form-control"
+          style="flex:1; resize:none;"
+          placeholder="Paste card names here, one per line. Quantities and set codes are supported:&#10;&#10;4 Lightning Bolt&#10;2 Counterspell (LEA) 55&#10;Black Lotus"
+          spellcheck="false"
+        ></textarea>
+      </div>
+      <div class="col-12 col-md-3 d-flex flex-column gap-2">
+        <button class="btn btn-load" onclick="loadCards()">Load Cards</button>
+        <button class="btn btn-export" id="btn-export" onclick="exportSelected()" disabled>Export Selected</button>
+        <button class="btn btn-clear" onclick="clearAll()">Clear</button>
+        <label class="sim-check-label">
+          <input type="checkbox" id="chk-hide-similar" onchange="toggleHideSimilar()">
+          <span class="sim-check-box">
+            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+              <polyline points="1,4 4,7 9,1" stroke="#1a1a2e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          Hide similar art
+        </label>
+      </div>
+    </div>
+
+    <div id="results"></div>
+  </div>
+
+  <!-- Sync status footer -->
+  <div id="sync-footer"></div>
+
+  <!-- Global loading overlay -->
+  <div id="load-overlay">
+    <div class="overlay-spinner"></div>
+    <div id="load-overlay-label">Loading cards…</div>
+  </div>
+
+  <div id="toast">Copied to clipboard!</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const CONCURRENCY = 6;
+
+    // cardName → { card, element }
+    const selectedCards = new Map();
+    // cardName → { qty: number }  (shared object so stepper buttons mutate in place)
+    const quantities = new Map();
+    // cardName → raw Card[] (all printings, unfiltered)
+    const rawCards = new Map();
+    let hideSimArt = false;
+
+    // ─── Color helpers ────────────────────────────────────────────────────────────
+
+    const PIP_COLORS = { W: 'pip-W', U: 'pip-U', B: 'pip-B', R: 'pip-R', G: 'pip-G' };
+
+    // WUBRG order: W=1, U=2, B=3, R=4, G=5 — mono first, then multi, then land, then colorless
+    const WUBRG = { W: 1, U: 2, B: 3, R: 4, G: 5 };
+
+    function colorSortKey(colorIdentity, typeLine) {
+      const ci = colorIdentity || [];
+      if (ci.length === 0) {
+        // Distinguish lands from colorless artifacts/spells
+        if (typeLine && /\bland\b/i.test(typeLine)) return '7-land';
+        return '8-colorless';
+      }
+      if (ci.length === 1) {
+        return `${WUBRG[ci[0]] ?? 9}-mono`;
+      }
+      // Multicolor: sort key 6, then sub-sort by sorted WUBRG indices
+      const sub = [...ci].sort((a, b) => (WUBRG[a] ?? 9) - (WUBRG[b] ?? 9)).map(c => WUBRG[c] ?? 9).join('');
+      return `6-multi-${sub}`;
+    }
+
+    function buildColorPips(colorIdentity) {
+      const pips = document.createElement('span');
+      pips.className = 'color-pips';
+      const colors = (colorIdentity || []).length > 0 ? colorIdentity : ['C'];
+      for (const c of colors) {
+        const pip = document.createElement('span');
+        pip.className = `color-pip ${PIP_COLORS[c] || 'pip-C'}`;
+        pips.appendChild(pip);
+      }
+      return pips;
+    }
+
+    // ─── Input parsing ───────────────────────────────────────────────────────────
+
+    function parseLine(line) {
+      let s = line.trim();
+      if (!s) return null;
+
+      // Leading quantity: "4 ", "4x ", "x4 "
+      let qty = 1;
+      const qtyMatch = s.match(/^x?(\d+)x?\s+/i);
+      if (qtyMatch) {
+        qty = Math.max(1, parseInt(qtyMatch[1], 10));
+        s = s.slice(qtyMatch[0].length);
+      }
+
+      // Trailing set hint + optional collector number: "(DSK) 42" or "(DSK)"
+      let setHint = null, cnHint = null;
+      const setMatch = s.match(/\s*\(([A-Z0-9]{2,6})\)\s*(\d+[a-z]?)?\s*$/i);
+      if (setMatch) {
+        setHint = setMatch[1].toUpperCase();
+        cnHint  = setMatch[2] || null;
+        s = s.slice(0, s.length - setMatch[0].length).trim();
+      }
+
+      // Strip any remaining parentheticals (e.g. foil tags)
+      s = s.replace(/\s*\([^)]*\)/g, '').trim();
+      if (!s) return null;
+
+      return { name: s, qty, setHint, cnHint };
+    }
+
+    function parseInput(raw) {
+      const seen = new Set();
+      return raw
+        .split('\n')
+        .map(parseLine)
+        .filter(entry => {
+          if (!entry) return false;
+          const key = entry.name.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    }
+
+    // ─── Local API fetching (parallel workers) ───────────────────────────────────
+
+    async function fetchAllPrints(cardName) {
+      const url = `/api/cards?name=${encodeURIComponent(cardName)}`;
+      const res = await fetch(url);
+      if (res.status === 404) return { notFound: true };
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const cards = await res.json();
+      if (!Array.isArray(cards) || cards.length === 0) return { notFound: true };
+      return { cards };
+    }
+
+    // ─── Image helpers ───────────────────────────────────────────────────────────
+
+    function getImageUri(card) {
+      if (card.image_uris?.normal) return card.image_uris.normal;
+      if (card.card_faces?.[0]?.image_uris?.normal) return card.card_faces[0].image_uris.normal;
+      return null;
+    }
+
+    // Returns { label, cssClass } for a notable frame variant, or null for base prints
+    function getFrameLabel(card) {
+      const fe = card.frame_effects || [];
+      if (fe.includes('extendedart'))   return { label: 'Ext Art',   cssClass: 'frame-badge-ext'  };
+      if (fe.includes('showcase'))      return { label: 'Showcase',  cssClass: 'frame-badge-show' };
+      if (card.border_color === 'borderless') return { label: 'Borderless', cssClass: 'frame-badge-bord' };
+      if (fe.includes('fullart'))       return { label: 'Full Art',  cssClass: 'frame-badge-full' };
+      const pt = card.promo_types || [];
+      // Only show badge for physical promos (promo pack, stamped) — skip online-only
+      const onlineOnly = pt.includes('mtgo') || pt.includes('arena') || pt.includes('digital');
+      if (!onlineOnly && (pt.includes('promopack') || pt.includes('stamped') || (card.promo && !pt.includes('boosterfun'))))
+        return { label: 'Promo', cssClass: 'frame-badge-promo' };
+      return null;
+    }
+
+    // Returns a string key representing the visual frame bucket for dedup purposes
+    // Extended art is a distinct bucket from base so both always show
+    function getFrameVariantKey(card) {
+      const fe = card.frame_effects || [];
+      if (fe.includes('extendedart'))         return 'ext';
+      if (fe.includes('showcase'))            return 'showcase';
+      if (card.border_color === 'borderless') return 'borderless';
+      if (fe.includes('fullart'))             return 'fullart';
+      return 'base';
+    }
+
+    function getFilteredCards(cardName) {
+      const cards = rawCards.get(cardName) || [];
+      if (!hideSimArt) return cards;
+      const seen = new Set();
+      return cards.filter(c => {
+        const key = `${c.illustration_id || c.id}__${getFrameVariantKey(c)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function toggleHideSimilar() {
+      const chk = document.getElementById('chk-hide-similar');
+      hideSimArt = chk ? chk.checked : !hideSimArt;
+      rebuildAllScrolls();
+    }
+
+    function rebuildAllScrolls() {
+      for (const row of document.querySelectorAll('#results .card-row[data-card-name]')) {
+        const name = row.dataset.cardName;
+        if (!rawCards.has(name)) continue;
+
+        const prevId = selectedCards.get(name)?.card?.id;
+        selectedCards.delete(name);
+
+        const entry = { name, setHint: row.dataset.setHint || null, cnHint: row.dataset.cnHint || null };
+        const filteredCards = getFilteredCards(name);
+        if (filteredCards.length === 0) continue;
+
+        const old = row.querySelector('.art-scroll-container');
+        if (old) old.remove();
+
+        const { container, defaultCard, defaultEl } = buildScrollContainer(name, filteredCards, entry);
+        row.appendChild(container);
+
+        // Restore previous selection if it's still visible after filter
+        if (prevId) {
+          const prevEl = container.querySelector(`.art-card[data-id="${CSS.escape(prevId)}"]`);
+          const prevCard = filteredCards.find(c => c.id === prevId);
+          if (prevEl && prevCard) { selectCard(name, prevCard, prevEl); continue; }
+        }
+        // Fall back to default
+        if (defaultCard && defaultEl) selectCard(name, defaultCard, defaultEl);
+      }
+      updateExportButton();
+    }
+
+    // ─── Selection ───────────────────────────────────────────────────────────────
+
+    function selectCard(cardName, card, artElement) {
+      const prev = selectedCards.get(cardName);
+      if (prev) prev.element.classList.remove('selected');
+      artElement.classList.add('selected');
+      selectedCards.set(cardName, { card, element: artElement });
+      updateExportButton();
+    }
+
+    function toggleSelect(cardName, card, artElement) {
+      const prev = selectedCards.get(cardName);
+      if (prev?.element === artElement) {
+        artElement.classList.remove('selected');
+        selectedCards.delete(cardName);
+        updateExportButton();
+        return;
+      }
+      selectCard(cardName, card, artElement);
+    }
+
+    function updateExportButton() {
+      const btn   = document.getElementById('btn-export');
+      const count = selectedCards.size;
+      btn.disabled    = count === 0;
+      btn.textContent = count > 0 ? `Export Selected (${count})` : 'Export Selected';
+    }
+
+    function exportSelected() {
+      const lines = [];
+      for (const [name, { card }] of selectedCards) {
+        const qty = quantities.get(name)?.qty ?? 1;
+        if (qty === 0) continue;
+        const set = (card.set || '').toUpperCase();
+        const cn  = card.collector_number || '';
+        lines.push(`${qty} ${name} (${set}) ${cn}`.trim());
+      }
+      navigator.clipboard.writeText(lines.join('\n'))
+        .then(() => showToast('Copied to clipboard!'));
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    // ─── Row builders ────────────────────────────────────────────────────────────
+
+    // Find the best default card given optional set/collector hints
+    function findDefaultCard(cards, entry) {
+      if (entry.setHint) {
+        // Exact set + collector number
+        if (entry.cnHint) {
+          const exact = cards.find(c =>
+            c.set?.toLowerCase() === entry.setHint.toLowerCase() &&
+            c.collector_number   === entry.cnHint
+          );
+          if (exact) return exact;
+        }
+        // Set code only
+        const bySet = cards.find(c =>
+          c.set?.toLowerCase() === entry.setHint.toLowerCase()
+        );
+        if (bySet) return bySet;
+      }
+      return cards[0];
+    }
+
+    function buildScrollContainer(name, cards, entry) {
+      const scrollContainer = document.createElement('div');
+      scrollContainer.className = 'art-scroll-container';
+
+      const defaultCard = findDefaultCard(cards, entry);
+      let defaultEl = null;
+
+      for (const card of cards) {
+        const artUri = getImageUri(card);
+        if (!artUri) continue;
+
+        const setName   = card.set_name || (card.set || '').toUpperCase();
+        const artist    = card.artist || '';
+        const metaLabel = artist ? `${setName} — ${artist}` : setName;
+        const tcgUrl    = card.purchase_uris?.tcgplayer || null;
+
+        const artCard = document.createElement('div');
+        artCard.className = 'art-card';
+        artCard.dataset.id = card.id; // used by rebuildAllScrolls to restore selection
+
+        const imgWrapper = document.createElement('div');
+        imgWrapper.className = 'img-wrapper';
+        imgWrapper.title = `Click to select — ${metaLabel}`;
+        imgWrapper.addEventListener('click', () => toggleSelect(name, card, artCard));
+
+        const img = document.createElement('img');
+        img.src     = artUri;
+        img.alt     = `${name} — ${setName}`;
+        img.loading = 'lazy';
+
+        const overlay = document.createElement('div');
+        overlay.className = 'select-overlay';
+        overlay.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>`;
+
+        imgWrapper.appendChild(img);
+        imgWrapper.appendChild(overlay);
+        artCard.appendChild(imgWrapper);
+
+        const meta = document.createElement('div');
+        meta.className = 'art-meta';
+
+        const metaText = document.createElement('span');
+        metaText.className = 'art-meta-text';
+        metaText.textContent = metaLabel;
+        metaText.title = metaLabel;
+        meta.appendChild(metaText);
+
+        const frameInfo = getFrameLabel(card);
+        if (frameInfo) {
+          const badge = document.createElement('span');
+          badge.className = `frame-badge ${frameInfo.cssClass}`;
+          badge.textContent = frameInfo.label;
+          meta.appendChild(badge);
+        }
+
+        if (tcgUrl) {
+          const tcgLink = document.createElement('a');
+          tcgLink.href      = tcgUrl;
+          tcgLink.target    = '_blank';
+          tcgLink.rel       = 'noopener noreferrer';
+          tcgLink.className = 'tcg-link';
+          tcgLink.textContent = 'TCG';
+          tcgLink.title = 'Buy on TCGPlayer';
+          meta.appendChild(tcgLink);
+        }
+
+        artCard.appendChild(meta);
+        scrollContainer.appendChild(artCard);
+
+        if (card.id === defaultCard?.id) defaultEl = artCard;
+      }
+
+      return { container: scrollContainer, defaultCard, defaultEl };
+    }
+
+    function buildCardRow(entry, cards) {
+      const { name, qty } = entry;
+      const row = document.createElement('div');
+      row.className = 'card-row';
+
+      // ── Label with qty stepper ──
+      const label = document.createElement('div');
+      label.className = 'card-row-label';
+
+      const stepper = document.createElement('div');
+      stepper.className = 'qty-stepper';
+
+      const btnMinus   = document.createElement('button');
+      btnMinus.type    = 'button';
+      btnMinus.className = 'qty-btn';
+      btnMinus.textContent = '−';
+
+      const qtyDisplay = document.createElement('span');
+      qtyDisplay.className = 'qty-display';
+      qtyDisplay.textContent = qty;
+
+      const btnPlus    = document.createElement('button');
+      btnPlus.type     = 'button';
+      btnPlus.className = 'qty-btn';
+      btnPlus.textContent = '+';
+
+      stepper.appendChild(btnMinus);
+      stepper.appendChild(qtyDisplay);
+      stepper.appendChild(btnPlus);
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = name;
+
+      const btnRemove = document.createElement('button');
+      btnRemove.type = 'button';
+      btnRemove.className = 'btn-remove-row';
+      btnRemove.title = 'Remove this card';
+      btnRemove.textContent = '✕';
+      btnRemove.addEventListener('click', () => {
+        selectedCards.delete(name);
+        quantities.delete(name);
+        rawCards.delete(name);
+        row.remove();
+        updateExportButton();
+      });
+
+      label.appendChild(stepper);
+      label.appendChild(buildColorPips(cards[0]?.color_identity));
+      label.appendChild(nameSpan);
+      label.appendChild(btnRemove);
+      row.appendChild(label);
+
+      // Store metadata for sort + rebuild
+      row.dataset.colorKey = colorSortKey(cards[0]?.color_identity, cards[0]?.type_line);
+      row.dataset.cardName = name;
+      row.dataset.setHint  = entry.setHint || '';
+      row.dataset.cnHint   = entry.cnHint  || '';
+
+      // Store raw cards for dedup toggle
+      rawCards.set(name, cards);
+
+      // Store qty state — shared object so buttons mutate it in place
+      const qtyState = { qty };
+      quantities.set(name, qtyState);
+
+      btnMinus.addEventListener('click', () => {
+        qtyState.qty = Math.max(1, qtyState.qty - 1);
+        qtyDisplay.textContent = qtyState.qty;
+      });
+      btnPlus.addEventListener('click', () => {
+        qtyState.qty++;
+        qtyDisplay.textContent = qtyState.qty;
+      });
+
+      // ── Art scroll row (apply dedup filter if active) ──
+      const filteredCards = getFilteredCards(name);
+      const { container, defaultCard, defaultEl } = buildScrollContainer(name, filteredCards, entry);
+      row.appendChild(container);
+
+      if (defaultCard && defaultEl) {
+        selectCard(name, defaultCard, defaultEl);
+      }
+
+      return row;
+    }
+
+    function buildErrorRow(cardName, message) {
+      const row = document.createElement('div');
+      row.className = 'card-row';
+
+      const label = document.createElement('div');
+      label.className = 'card-row-label';
+      label.textContent = cardName;
+      row.appendChild(label);
+
+      const err = document.createElement('div');
+      err.className = 'error-badge';
+      err.textContent = message;
+      row.appendChild(err);
+
+      return row;
+    }
+
+    function createPlaceholder(name) {
+      const ph = document.createElement('div');
+      ph.className = 'card-row';
+      ph.innerHTML = `
+        <div class="card-row-label">${escapeHtml(name)}</div>
+        <div class="art-scroll-container ps-1">
+          <span class="loading-spinner"></span>
+          <span class="text-secondary" style="font-size:0.85rem;">Fetching prints…</span>
+        </div>`;
+      return ph;
+    }
+
+    // ─── Main load ───────────────────────────────────────────────────────────────
+
+    async function loadCards() {
+      const entries = parseInput(document.getElementById('cardInput').value);
+      if (entries.length === 0) return;
+
+      selectedCards.clear();
+      quantities.clear();
+      updateExportButton();
+
+      const results = document.getElementById('results');
+      const overlay = document.getElementById('load-overlay');
+      const overlayLabel = document.getElementById('load-overlay-label');
+      const loadBtn = document.querySelector('.btn-load');
+
+      // Show overlay, hide results
+      results.classList.add('loading');
+      results.innerHTML = '';
+      overlay.classList.add('active');
+      if (loadBtn) loadBtn.disabled = true;
+
+      let completed = 0;
+      const total = entries.length;
+
+      // Insert all placeholders in order first
+      const placeholderMap = new Map();
+      entries.forEach((entry, i) => {
+        const ph = createPlaceholder(entry.name);
+        ph.dataset.inputOrder = i;
+        results.appendChild(ph);
+        placeholderMap.set(entry.name, ph);
+      });
+
+      // Parallel workers drain a shared queue
+      const queue = [...entries];
+
+      async function worker() {
+        while (queue.length > 0) {
+          const entry = queue.shift();
+          const ph    = placeholderMap.get(entry.name);
+          try {
+            const result = await fetchAllPrints(entry.name);
+            let newRow;
+            if (result.notFound) {
+              newRow = buildErrorRow(entry.name, 'Card not found — check the spelling.');
+            } else {
+              newRow = buildCardRow(entry, result.cards);
+            }
+            newRow.dataset.inputOrder = ph.dataset.inputOrder;
+            ph.replaceWith(newRow);
+          } catch (e) {
+            const errRow = buildErrorRow(entry.name, `Error: ${e.message}`);
+            errRow.dataset.inputOrder = ph.dataset.inputOrder;
+            ph.replaceWith(errRow);
+          }
+          completed++;
+          overlayLabel.textContent = `Loading cards… ${completed} / ${total}`;
+        }
+      }
+
+      const workerCount = Math.min(CONCURRENCY, entries.length);
+      await Promise.all(Array.from({ length: workerCount }, worker));
+
+      // Re-sort all card rows: by color (WUBRG → multi → land → colorless),
+      // then alphabetically by card name within each color group
+      const allRows = [...results.children];
+      allRows.sort((a, b) => {
+        const ka = a.dataset.colorKey || '9';
+        const kb = b.dataset.colorKey || '9';
+        if (ka < kb) return -1;
+        if (ka > kb) return 1;
+        // Same color bucket — sort alphabetically by card name
+        const na = (a.dataset.cardName || '').toLowerCase();
+        const nb = (b.dataset.cardName || '').toLowerCase();
+        if (na < nb) return -1;
+        if (na > nb) return 1;
+        return 0;
+      });
+      allRows.forEach(r => results.appendChild(r));
+
+      // Hide overlay, fade results in
+      overlay.classList.remove('active');
+      if (loadBtn) loadBtn.disabled = false;
+      // requestAnimationFrame ensures the DOM is painted before we start the fade
+      requestAnimationFrame(() => results.classList.remove('loading'));
+    }
+
+    function clearAll() {
+      document.getElementById('cardInput').value = '';
+      document.getElementById('results').innerHTML = '';
+      selectedCards.clear();
+      quantities.clear();
+      updateExportButton();
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.appendChild(document.createTextNode(text));
+      return div.innerHTML;
+    }
+
+    // Ctrl+Enter to load
+    document.getElementById('cardInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.ctrlKey) loadCards();
+    });
+
+    // Show sync date in footer
+    fetch('/api/sync-status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.last_sync) return;
+        const d = new Date(data.last_sync);
+        const el = document.getElementById('sync-footer');
+        if (el) el.textContent = `Arts last updated: ${d.toLocaleDateString()}`;
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>

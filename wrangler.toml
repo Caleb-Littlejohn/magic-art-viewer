@@ -1,0 +1,10 @@
+name = "magic-art-viewer"
+compatibility_date = "2025-03-21"
+compatibility_flags = ["nodejs_compat"]
+
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "magic-art-cards"
+database_id = "fe4b7549-d9d8-45ca-b029-c437c41ed531"

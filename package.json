@@ -1,0 +1,24 @@
+{
+  "name": "magic-art-viewer",
+  "version": "1.0.0",
+  "description": "Magic card art viewer with local Scryfall bulk data",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "sync": "node sync.js",
+    "sync:force": "node sync.js --force",
+    "generate-sql": "node scripts/generate-sql.js",
+    "import-d1": "wrangler d1 execute magic-art-cards --file=cards-import.sql --remote",
+    "build": "node -e \"const fs=require('fs');fs.mkdirSync('dist',{recursive:true});fs.copyFileSync('index.html','dist/index.html');\"",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=magic-art-viewer"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.3"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
