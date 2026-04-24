@@ -636,6 +636,14 @@
       let s = line.trim();
       if (!s) return null;
 
+      // Foil marker (*F* — Moxfield/standard format) — strip first so it doesn't
+      // interfere with the set-code regex that anchors to end-of-string ($)
+      let isFoil = false;
+      if (/\*F\*/i.test(s)) {
+        isFoil = true;
+        s = s.replace(/\s*\*F\*\s*/gi, ' ').trim();
+      }
+
       // Leading quantity: "4 ", "4x ", "x4 "
       let qty = 1;
       const qtyMatch = s.match(/^x?(\d+)x?\s+/i);
@@ -670,13 +678,6 @@
       // Strip bare trailing collector number with no set code (e.g. "190†" from Arena exports)
       if (!setHint) {
         s = s.replace(/\s+\d+[†a-z]?\s*$/, '').trim();
-      }
-
-      // Foil marker (*F* — Moxfield/standard format)
-      let isFoil = false;
-      if (/\*F\*/i.test(s)) {
-        isFoil = true;
-        s = s.replace(/\s*\*F\*\s*/gi, ' ').trim();
       }
 
       // Double-slash DFC notation: "Fire // Ice" — use front face only
