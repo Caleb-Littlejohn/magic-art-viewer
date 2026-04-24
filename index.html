@@ -439,8 +439,8 @@
 
     /* ── Foil shimmer overlay on card images ───────────────────────────────── */
     @keyframes foil-sweep {
-      0%   { background-position: -100% 50%; }
-      100% { background-position: 200% 50%; }
+      0%   { transform: translateX(-150%); }
+      100% { transform: translateX(250%); }
     }
 
     .img-wrapper.foil-shimmer::after {
@@ -448,18 +448,19 @@
       position: absolute;
       inset: 0;
       border-radius: 8px;
+      /* Band sweeps via translateX — img-wrapper overflow:hidden clips it.
+         Both ends are transparent so the loop reset is completely invisible. */
       background: linear-gradient(
-        105deg,
-        transparent        15%,
-        rgba(255, 80,160, 0.50) 25%,
-        rgba(255,200,  0, 0.50) 35%,
-        rgba( 80,255,140, 0.50) 48%,
-        rgba( 80,180,255, 0.50) 60%,
-        rgba(180, 80,255, 0.50) 72%,
-        transparent        82%
+        to right,
+        transparent              0%,
+        rgba(180, 80, 255, 0.22) 15%,
+        rgba( 80,180, 255, 0.22) 30%,
+        rgba( 80,255, 140, 0.22) 45%,
+        rgba(255,200,   0, 0.22) 60%,
+        rgba(255, 80, 160, 0.22) 75%,
+        transparent             100%
       );
-      background-size: 250% 100%;
-      animation: foil-sweep 2.4s linear infinite;
+      animation: foil-sweep 3.5s linear infinite;
       pointer-events: none;
       mix-blend-mode: screen;
     }
@@ -966,7 +967,8 @@
         imgWrapper.className = 'img-wrapper';
         imgWrapper.title = `Click to select — ${metaLabel}`;
         imgWrapper.addEventListener('click', () => toggleSelect(name, card, artCard));
-        if (foilActive) imgWrapper.classList.add('foil-shimmer');
+        // Shimmer when foil mode is on, or when this specific printing is foil-only
+        if (foilActive || (card.foil && !card.nonfoil)) imgWrapper.classList.add('foil-shimmer');
 
         const img = document.createElement('img');
         img.src     = artUri;
@@ -1068,26 +1070,36 @@
         updateExportButton();
       });
 
-      label.appendChild(stepper);
-      label.appendChild(btnRemove);
-      label.appendChild(buildColorPips(cards[0]?.color_identity));
-      label.appendChild(nameSpan);
-
       // ── Foil toggle ──
-      // Show the F button always; if DB has foil data, filter to foil-only prints.
-      // If foil data is absent (pre-re-sync), the shimmer still works.
       const hasFoil = cards.some(c => c.foil);
-      // Seed foil state: explicit *F* in input, or defaultFoil (when foil data exists)
+      // Seed foil state first so pip class can reference it
       if (!foilState.has(name)) {
         foilState.set(name, entry.foil || (defaultFoil && hasFoil));
       }
+
+      const colorPips = buildColorPips(cards[0]?.color_identity);
+
+      label.appendChild(stepper);
+      label.appendChild(btnRemove);
+      label.appendChild(colorPips);
+      label.appendChild(nameSpan);
+
+      // Show the F button always; if DB has foil data, filter to foil-only prints.
+      // If foil data is absent (pre-re-sync), the shimmer still works.
       const foilBtn = document.createElement('button');
       foilBtn.type = 'button';
       foilBtn.className = 'foil-btn' + (foilState.get(name) ? ' active' : '');
       foilBtn.title = 'Toggle foil';
       foilBtn.textContent = 'F';
       foilBtn.addEventListener('click', () => {
-        foilState.set(name, !foilState.get(name));
+        const newFoil = !foilState.get(name);
+        foilState.set(name, newFoil);
+        // If the user turns off foil while "Default foil" is on, clear that global toggle
+        if (!newFoil && defaultFoil) {
+          defaultFoil = false;
+          const chk = document.getElementById('chk-default-foil');
+          if (chk) chk.checked = false;
+        }
         rebuildRowScroll(row);
       });
       label.appendChild(foilBtn);
