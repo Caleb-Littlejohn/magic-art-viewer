@@ -226,6 +226,23 @@
       padding: 0.4rem 0.6rem;
     }
 
+    #error-container {
+      border: 1px solid #f87171;
+      border-radius: 6px;
+      background: rgba(248, 113, 113, 0.08);
+      padding: 0.7rem 1rem;
+      color: #f87171;
+    }
+    #error-container .error-heading {
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+    #error-container ul {
+      margin: 0;
+      padding-left: 1.3rem;
+      font-size: 0.9rem;
+    }
+
     #results {
       margin-top: 2rem;
       opacity: 1;
@@ -368,7 +385,6 @@
       line-height: 1;
       padding: 0 0.2rem;
       cursor: pointer;
-      margin-left: auto;
       flex-shrink: 0;
       transition: color 0.15s;
     }
@@ -420,6 +436,69 @@
       background: #c9a84c;
     }
     .sim-check-label:has(input:checked) .sim-check-box svg { display: block; }
+
+    /* ── Foil shimmer overlay on card images ───────────────────────────────── */
+    @keyframes foil-sweep {
+      0%   { background-position: -100% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+
+    .img-wrapper.foil-shimmer::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 8px;
+      background: linear-gradient(
+        105deg,
+        transparent        15%,
+        rgba(255, 80,160, 0.50) 25%,
+        rgba(255,200,  0, 0.50) 35%,
+        rgba( 80,255,140, 0.50) 48%,
+        rgba( 80,180,255, 0.50) 60%,
+        rgba(180, 80,255, 0.50) 72%,
+        transparent        82%
+      );
+      background-size: 250% 100%;
+      animation: foil-sweep 2.4s linear infinite;
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+
+    /* ── Foil "F" toggle button ─────────────────────────────────────────────── */
+    @keyframes foil-btn-shift {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .foil-btn {
+      background: #2a2a4a;
+      border: 1px solid #444466;
+      border-radius: 4px;
+      color: #555577;
+      font-weight: 800;
+      font-size: 0.72rem;
+      padding: 0.08rem 0.42rem;
+      cursor: pointer;
+      flex-shrink: 0;
+      line-height: 1.7;
+      transition: opacity 0.15s;
+      user-select: none;
+    }
+
+    .foil-btn.active {
+      background: linear-gradient(135deg, #ff6b9d 0%, #ffd166 25%, #06d6a0 50%, #48cae4 75%, #c77dff 100%);
+      background-size: 300% 300%;
+      animation: foil-btn-shift 2s ease infinite;
+      border: none;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.55);
+    }
+
+    .foil-btn:hover:not(.active) {
+      border-color: #888899;
+      color: #aaaacc;
+    }
 
     /* Toast notification */
     #toast {
@@ -473,8 +552,19 @@
           </span>
           Hide similar art
         </label>
+        <label class="sim-check-label">
+          <input type="checkbox" id="chk-default-foil" onchange="toggleDefaultFoil()">
+          <span class="sim-check-box">
+            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+              <polyline points="1,4 4,7 9,1" stroke="#1a1a2e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          Default foil
+        </label>
       </div>
     </div>
+
+    <div id="error-container" class="d-none mt-3"></div>
 
     <div id="results"></div>
   </div>
@@ -500,7 +590,10 @@
     const quantities = new Map();
     // cardName → raw Card[] (all printings, unfiltered)
     const rawCards = new Map();
+    // cardName → bool (true = show foil-only + shimmer)
+    const foilState = new Map();
     let hideSimArt = false;
+    let defaultFoil = false;
 
     // ─── Color helpers ────────────────────────────────────────────────────────────
 
@@ -552,7 +645,7 @@
 
       // Trailing set hint + optional collector number: "(DSK) 42" or "(DSK)"
       let setHint = null, cnHint = null;
-      const setMatch = s.match(/\s*\(([A-Z0-9]{2,6})\)\s*(\d+[a-z]?)?\s*$/i);
+      const setMatch = s.match(/\s*[(\[]([A-Z0-9]{2,6})[)\]]\s*(\d+[†a-z]?)?\s*$/i);
       if (setMatch) {
         setHint = setMatch[1].toUpperCase();
         cnHint  = setMatch[2] || null;
@@ -561,9 +654,43 @@
 
       // Strip any remaining parentheticals (e.g. foil tags)
       s = s.replace(/\s*\([^)]*\)/g, '').trim();
+
+      // Trailing set hint without parens: "VOW-232", "2XM-114", "M20-76" etc.
+      // Must come before DFC splitting so "Bonecrusher Giant / Stomp ELD-115" works.
+      if (!setHint) {
+        const bareSetMatch = s.match(/\s+([A-Z0-9]{2,5})-(\d+[†a-z]?)\s*$/i);
+        if (bareSetMatch) {
+          setHint = bareSetMatch[1].toUpperCase();
+          cnHint  = bareSetMatch[2] || null;
+          s = s.slice(0, s.length - bareSetMatch[0].length).trim();
+        }
+      }
+
+      // Strip bare trailing collector number with no set code (e.g. "190†" from Arena exports)
+      if (!setHint) {
+        s = s.replace(/\s+\d+[†a-z]?\s*$/, '').trim();
+      }
+
+      // Foil marker (*F* — Moxfield/standard format)
+      let isFoil = false;
+      if (/\*F\*/i.test(s)) {
+        isFoil = true;
+        s = s.replace(/\s*\*F\*\s*/gi, ' ').trim();
+      }
+
+      // Double-slash DFC notation: "Fire // Ice" — use front face only
+      if (s.includes(' // ')) {
+        s = s.split(' // ')[0].trim();
+      }
+
+      // Single-slash DFC notation: "Bonecrusher Giant / Stomp" — use front face only
+      if (s.includes(' / ')) {
+        s = s.split(' / ')[0].trim();
+      }
+
       if (!s) return null;
 
-      return { name: s, qty, setHint, cnHint };
+      return { name: s, qty, setHint, cnHint, foil: isFoil };
     }
 
     function parseInput(raw) {
@@ -627,7 +754,13 @@
     }
 
     function getFilteredCards(cardName) {
-      const cards = rawCards.get(cardName) || [];
+      let cards = rawCards.get(cardName) || [];
+      // When foil mode is active, restrict to foil-available printings only
+      if (foilState.get(cardName)) {
+        const foilCards = cards.filter(c => c.foil);
+        // Fall back to all printings if none have foil data (e.g. DB not yet re-synced)
+        if (foilCards.length > 0) cards = foilCards;
+      }
       if (!hideSimArt) return cards;
       const seen = new Set();
       return cards.filter(c => {
@@ -644,32 +777,54 @@
       rebuildAllScrolls();
     }
 
-    function rebuildAllScrolls() {
+    function toggleDefaultFoil() {
+      const chk = document.getElementById('chk-default-foil');
+      defaultFoil = chk ? chk.checked : !defaultFoil;
+      // Apply to every loaded card that has foil printings
       for (const row of document.querySelectorAll('#results .card-row[data-card-name]')) {
         const name = row.dataset.cardName;
-        if (!rawCards.has(name)) continue;
-
-        const prevId = selectedCards.get(name)?.card?.id;
-        selectedCards.delete(name);
-
-        const entry = { name, setHint: row.dataset.setHint || null, cnHint: row.dataset.cnHint || null };
-        const filteredCards = getFilteredCards(name);
-        if (filteredCards.length === 0) continue;
-
-        const old = row.querySelector('.art-scroll-container');
-        if (old) old.remove();
-
-        const { container, defaultCard, defaultEl } = buildScrollContainer(name, filteredCards, entry);
-        row.appendChild(container);
-
-        // Restore previous selection if it's still visible after filter
-        if (prevId) {
-          const prevEl = container.querySelector(`.art-card[data-id="${CSS.escape(prevId)}"]`);
-          const prevCard = filteredCards.find(c => c.id === prevId);
-          if (prevEl && prevCard) { selectCard(name, prevCard, prevEl); continue; }
+        const cards = rawCards.get(name) || [];
+        if (cards.some(c => c.foil)) {
+          foilState.set(name, defaultFoil);
+          rebuildRowScroll(row);
         }
-        // Fall back to default
-        if (defaultCard && defaultEl) selectCard(name, defaultCard, defaultEl);
+      }
+    }
+
+    // Rebuild the scroll container for a single card row, preserving selection where possible.
+    function rebuildRowScroll(row) {
+      const name = row.dataset.cardName;
+      if (!rawCards.has(name)) return;
+
+      // Update "F" button appearance
+      const foilBtn = row.querySelector('.foil-btn');
+      if (foilBtn) foilBtn.classList.toggle('active', !!foilState.get(name));
+
+      const prevId = selectedCards.get(name)?.card?.id;
+      selectedCards.delete(name);
+
+      const entry = { name, setHint: row.dataset.setHint || null, cnHint: row.dataset.cnHint || null };
+      const filteredCards = getFilteredCards(name);
+      const old = row.querySelector('.art-scroll-container');
+      if (old) old.remove();
+
+      if (filteredCards.length === 0) { updateExportButton(); return; }
+
+      const { container, defaultCard, defaultEl } = buildScrollContainer(name, filteredCards, entry);
+      row.appendChild(container);
+
+      if (prevId) {
+        const prevEl = container.querySelector(`.art-card[data-id="${CSS.escape(prevId)}"]`);
+        const prevCard = filteredCards.find(c => c.id === prevId);
+        if (prevEl && prevCard) { selectCard(name, prevCard, prevEl); return; }
+      }
+      if (defaultCard && defaultEl) selectCard(name, defaultCard, defaultEl);
+      updateExportButton();
+    }
+
+    function rebuildAllScrolls() {
+      for (const row of document.querySelectorAll('#results .card-row[data-card-name]')) {
+        rebuildRowScroll(row);
       }
       updateExportButton();
     }
@@ -709,7 +864,8 @@
         if (qty === 0) continue;
         const set = (card.set || '').toUpperCase();
         const cn  = card.collector_number || '';
-        lines.push(`${qty} ${name} [${set}] ${cn}`.trim());
+        const foil = foilState.get(name) || false;
+        lines.push(`${qty} ${name} [${set}] ${cn}${foil ? ' *F*' : ''}`.trim());
       }
       navigator.clipboard.writeText(lines.join('\n'))
         .then(() => showToast('Copied to clipboard!'));
@@ -725,13 +881,32 @@
     // ─── Row builders ────────────────────────────────────────────────────────────
 
     // Find the best default card given optional set/collector hints
-    // True for physical, non-special-frame prints (excludes MTGO/Arena/digital reprints)
+    // True for physical, non-special-frame prints (excludes MTGO/Arena/digital reprints,
+    // Secret Lair, and The List)
     function isPhysicalBaseCard(card) {
       if (card.promo) return false;
       if (getFrameVariantKey(card) !== 'base') return false;
       const pt = card.promo_types || [];
       if (pt.includes('mtgo') || pt.includes('arena') || pt.includes('digital')) return false;
+      const sc = (card.set || '').toLowerCase();
+      if (sc === 'sld' || sc === 'plst') return false;
+      if (pt.includes('thelist') || pt.includes('secretlair')) return false;
       return true;
+    }
+
+    // Sort priority: lower = shown first
+    // 0 regular physical base  1 special frame (showcase/ext/borderless)
+    // 2 physical promos        3 Secret Lair
+    // 4 The List               5 digital/online
+    function getCardSortPriority(card) {
+      const sc = (card.set || '').toLowerCase();
+      const pt = card.promo_types || [];
+      if (pt.includes('mtgo') || pt.includes('arena') || pt.includes('digital')) return 5;
+      if (sc === 'plst' || pt.includes('thelist')) return 4;
+      if (sc === 'sld' || pt.includes('secretlair')) return 3;
+      if (card.promo) return 2;
+      if (getFrameVariantKey(card) !== 'base') return 1;
+      return 0;
     }
 
     function findDefaultCard(cards, entry) {
@@ -758,16 +933,21 @@
       const scrollContainer = document.createElement('div');
       scrollContainer.className = 'art-scroll-container';
 
-      // Physical base prints first (preserving released_at ASC order within groups),
-      // then promos, digital reprints, and special-frame variants
+      // Sort: regular base → special frame → promos → Secret Lair → The List → digital
+      // Within each tier, sort chronologically oldest-first by released_at.
       cards = [...cards].sort((a, b) => {
-        const aBase = isPhysicalBaseCard(a) ? 0 : 1;
-        const bBase = isPhysicalBaseCard(b) ? 0 : 1;
-        return aBase - bBase;
+        const pd = getCardSortPriority(a) - getCardSortPriority(b);
+        if (pd !== 0) return pd;
+        const da = a.released_at || '';
+        const db = b.released_at || '';
+        if (da < db) return -1;
+        if (da > db) return 1;
+        return 0;
       });
 
       const defaultCard = findDefaultCard(cards, entry);
       let defaultEl = null;
+      const foilActive = foilState.get(name) || false;
 
       for (const card of cards) {
         const artUri = getImageUri(card);
@@ -786,6 +966,7 @@
         imgWrapper.className = 'img-wrapper';
         imgWrapper.title = `Click to select — ${metaLabel}`;
         imgWrapper.addEventListener('click', () => toggleSelect(name, card, artCard));
+        if (foilActive) imgWrapper.classList.add('foil-shimmer');
 
         const img = document.createElement('img');
         img.src     = artUri;
@@ -882,14 +1063,34 @@
         selectedCards.delete(name);
         quantities.delete(name);
         rawCards.delete(name);
+        foilState.delete(name);
         row.remove();
         updateExportButton();
       });
 
       label.appendChild(stepper);
+      label.appendChild(btnRemove);
       label.appendChild(buildColorPips(cards[0]?.color_identity));
       label.appendChild(nameSpan);
-      label.appendChild(btnRemove);
+
+      // ── Foil toggle ──
+      // Show the F button always; if DB has foil data, filter to foil-only prints.
+      // If foil data is absent (pre-re-sync), the shimmer still works.
+      const hasFoil = cards.some(c => c.foil);
+      // Seed foil state: explicit *F* in input, or defaultFoil (when foil data exists)
+      if (!foilState.has(name)) {
+        foilState.set(name, entry.foil || (defaultFoil && hasFoil));
+      }
+      const foilBtn = document.createElement('button');
+      foilBtn.type = 'button';
+      foilBtn.className = 'foil-btn' + (foilState.get(name) ? ' active' : '');
+      foilBtn.title = 'Toggle foil';
+      foilBtn.textContent = 'F';
+      foilBtn.addEventListener('click', () => {
+        foilState.set(name, !foilState.get(name));
+        rebuildRowScroll(row);
+      });
+      label.appendChild(foilBtn);
       row.appendChild(label);
 
       // Store metadata for sort + rebuild
@@ -969,6 +1170,11 @@
       const overlay = document.getElementById('load-overlay');
       const overlayLabel = document.getElementById('load-overlay-label');
       const loadBtn = document.querySelector('.btn-load');
+      const errContainer = document.getElementById('error-container');
+
+      // Reset error container
+      errContainer.innerHTML = '';
+      errContainer.classList.add('d-none');
 
       // Show overlay, hide results
       results.classList.add('loading');
@@ -978,6 +1184,7 @@
 
       let completed = 0;
       const total = entries.length;
+      const notFoundNames = [];
 
       // Insert all placeholders in order first
       const placeholderMap = new Map();
@@ -997,18 +1204,17 @@
           const ph    = placeholderMap.get(entry.name);
           try {
             const result = await fetchAllPrints(entry.name);
-            let newRow;
             if (result.notFound) {
-              newRow = buildErrorRow(entry.name, 'Card not found — check the spelling.');
+              notFoundNames.push(entry.name);
+              ph.remove();
             } else {
-              newRow = buildCardRow(entry, result.cards);
+              const newRow = buildCardRow(entry, result.cards);
+              newRow.dataset.inputOrder = ph.dataset.inputOrder;
+              ph.replaceWith(newRow);
             }
-            newRow.dataset.inputOrder = ph.dataset.inputOrder;
-            ph.replaceWith(newRow);
           } catch (e) {
-            const errRow = buildErrorRow(entry.name, `Error: ${e.message}`);
-            errRow.dataset.inputOrder = ph.dataset.inputOrder;
-            ph.replaceWith(errRow);
+            notFoundNames.push(entry.name);
+            ph.remove();
           }
           completed++;
           overlayLabel.textContent = `Loading cards… ${completed} / ${total}`;
@@ -1017,6 +1223,23 @@
 
       const workerCount = Math.min(CONCURRENCY, entries.length);
       await Promise.all(Array.from({ length: workerCount }, worker));
+
+      // Populate error container for not-found cards
+      if (notFoundNames.length > 0) {
+        const count = notFoundNames.length;
+        const heading = document.createElement('div');
+        heading.className = 'error-heading';
+        heading.textContent = `Error, ${count} card${count !== 1 ? 's' : ''} not found. This includes:`;
+        const list = document.createElement('ul');
+        for (const n of notFoundNames) {
+          const li = document.createElement('li');
+          li.textContent = n;
+          list.appendChild(li);
+        }
+        errContainer.appendChild(heading);
+        errContainer.appendChild(list);
+        errContainer.classList.remove('d-none');
+      }
 
       // Re-sort all card rows: by color (WUBRG → multi → land → colorless),
       // then alphabetically by card name within each color group
@@ -1045,8 +1268,12 @@
     function clearAll() {
       document.getElementById('cardInput').value = '';
       document.getElementById('results').innerHTML = '';
+      const errContainer = document.getElementById('error-container');
+      if (errContainer) { errContainer.innerHTML = ''; errContainer.classList.add('d-none'); }
       selectedCards.clear();
       quantities.clear();
+      rawCards.clear();
+      foilState.clear();
       updateExportButton();
     }
 

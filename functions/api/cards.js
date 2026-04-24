@@ -51,6 +51,8 @@ export async function onRequestGet(context) {
     border_color: c.border_color,
     promo: Boolean(c.promo),
     promo_types: JSON.parse(c.promo_types || '[]'),
+    foil: c.foil === 1 || c.foil === true,
+    nonfoil: c.nonfoil === 1 || c.nonfoil === true,
     image_uris: {
       normal: c.image_normal || null,
       large:  c.image_large  || null,

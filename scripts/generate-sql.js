@@ -55,6 +55,8 @@ CREATE TABLE cards (
   border_color     TEXT,
   promo            INTEGER DEFAULT 0,
   promo_types      TEXT,
+  foil             INTEGER DEFAULT 0,
+  nonfoil          INTEGER DEFAULT 1,
   image_normal     TEXT,
   image_large      TEXT,
   tcgplayer        TEXT
@@ -86,6 +88,7 @@ for (let i = 0; i < cards.length; i += BATCH) {
     `${esc(c.type_line)},${esc(JSON.stringify(c.frame_effects || []))},` +
     `${esc(c.border_color)},${c.promo ? 1 : 0},` +
     `${esc(JSON.stringify(c.promo_types || []))},` +
+    `${c.foil ? 1 : 0},${c.nonfoil ? 1 : 0},` +
     `${esc(c.image_uris?.normal)},${esc(c.image_uris?.large)},` +
     `${esc(c.purchase_uris?.tcgplayer)})`
   );

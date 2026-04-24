@@ -81,6 +81,8 @@ function pickFields(card) {
     border_color:     card.border_color     || 'black',
     promo:            card.promo            || false,
     promo_types:      card.promo_types      || [],
+    foil:             Boolean(card.foil),
+    nonfoil:          Boolean(card.nonfoil),
     image_uris: {
       normal: getImageUri(card, 'normal'),
       large:  getImageUri(card, 'large'),
