@@ -709,7 +709,7 @@
         if (qty === 0) continue;
         const set = (card.set || '').toUpperCase();
         const cn  = card.collector_number || '';
-        lines.push(`${qty} ${name} (${set}) ${cn}`.trim());
+        lines.push(`${qty} ${name} [${set}] ${cn}`.trim());
       }
       navigator.clipboard.writeText(lines.join('\n'))
         .then(() => showToast('Copied to clipboard!'));
