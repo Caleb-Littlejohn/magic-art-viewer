@@ -7,8 +7,10 @@
     "start": "node server.js",
     "sync": "node sync.js",
     "sync:force": "node sync.js --force",
+    "sync:delta": "node scripts/sync-delta.js",
     "generate-sql": "node scripts/generate-sql.js",
     "import-d1": "wrangler d1 execute magic-art-cards --file=cards-import.sql --remote",
+    "import-delta": "wrangler d1 execute magic-art-cards --file=cards-delta.sql --remote",
     "build": "node -e \"const fs=require('fs');fs.mkdirSync('dist',{recursive:true});fs.copyFileSync('index.html','dist/index.html');\"",
     "deploy": "npm run build && wrangler pages deploy dist --project-name=magic-art-viewer"
   },

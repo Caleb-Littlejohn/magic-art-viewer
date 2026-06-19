@@ -3,5 +3,6 @@ cards.json
 cards-meta.json
 cards-import.sql
 cards-import-*.sql
+cards-delta.sql
 .wrangler/
 .git/
