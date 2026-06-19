@@ -10,7 +10,7 @@
 
 const path = require('path');
 const fs   = require('fs');
-const { BULK_DATA_URL, BULK_TYPE, SKIP_LAYOUTS, httpGet, pickFields } = require('./scripts/scryfall');
+const { BULK_DATA_URL, BULK_TYPE, httpGet, fetchBulkCards } = require('./scripts/scryfall');
 
 const CARDS_PATH = path.join(__dirname, 'cards.json');
 const META_PATH  = path.join(__dirname, 'cards-meta.json');
@@ -45,22 +45,13 @@ async function main() {
     } catch { /* malformed meta — continue */ }
   }
 
-  // 3. Download bulk file
+  // 3. Download + stream-parse the bulk file (slimming each card as it arrives)
   console.log(`\nDownloading ${downloadUri}`);
-  const raw = await httpGet(downloadUri);
+  const slim = await fetchBulkCards(downloadUri);
+  console.log(`  Kept ${slim.length.toLocaleString()} cards after filtering non-game layouts.`);
 
-  // 4. Parse JSON
-  console.log('Parsing JSON...');
-  const cards = JSON.parse(raw);
-  console.log(`  Parsed ${cards.length.toLocaleString()} cards.`);
-
-  // Drop non-game card layouts
-  const filtered = cards.filter(c => !SKIP_LAYOUTS.has(c.layout));
-  console.log(`  Kept ${filtered.length.toLocaleString()} after filtering non-game layouts.`);
-
-  // 5. Extract only the fields we need
+  // 4. Write slim cards
   console.log('Writing cards.json...');
-  const slim = filtered.map(pickFields);
   fs.writeFileSync(CARDS_PATH, JSON.stringify(slim), 'utf8');
 
   // 6. Write meta

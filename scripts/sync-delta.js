@@ -24,8 +24,8 @@
 const path = require('path');
 const fs   = require('fs');
 const {
-  BULK_DATA_URL, BULK_TYPE, SKIP_LAYOUTS,
-  httpGet, pickFields,
+  BULK_DATA_URL, BULK_TYPE,
+  httpGet, fetchBulkCards,
   esc, cardTuple, cardNameRows,
 } = require('./scryfall');
 
@@ -76,10 +76,9 @@ async function main() {
     console.log('  No previous cards.json — treating every card as new (full delta).');
   }
 
-  // 4. Download + slim the fresh bulk.
+  // 4. Download + stream-parse + slim the fresh bulk.
   console.log(`\nDownloading ${entry.download_uri}`);
-  const cards = JSON.parse(await httpGet(entry.download_uri));
-  const slim = cards.filter(c => !SKIP_LAYOUTS.has(c.layout)).map(pickFields);
+  const slim = await fetchBulkCards(entry.download_uri);
   console.log(`  ${slim.length.toLocaleString()} cards after filtering non-game layouts.`);
 
   // 5. Diff: keep cards whose serialized form differs from the previous snapshot.

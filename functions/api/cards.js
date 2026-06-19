@@ -57,6 +57,10 @@ export async function onRequestGet(context) {
       normal: c.image_normal || null,
       large:  c.image_large  || null,
     },
+    prices: {
+      usd:      c.usd      || null,
+      usd_foil: c.usd_foil || null,
+    },
     purchase_uris: c.tcgplayer ? { tcgplayer: c.tcgplayer } : null,
   }));
 

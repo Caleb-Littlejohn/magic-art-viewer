@@ -10,6 +10,9 @@
 
 const https = require('https');
 const http  = require('http');
+const { chain }       = require('stream-chain');
+const { parser }      = require('stream-json');
+const { streamArray } = require('stream-json/streamers/StreamArray');
 
 const BULK_DATA_URL = 'https://api.scryfall.com/bulk-data';
 const BULK_TYPE     = 'default_cards';
@@ -18,7 +21,7 @@ const BULK_TYPE     = 'default_cards';
 const SKIP_LAYOUTS = new Set(['art_series', 'token', 'double_faced_token', 'emblem', 'plane', 'phenomenon', 'scheme', 'vanguard']);
 
 // Column order for the `cards` table — must match the CREATE TABLE in generate-sql.js.
-const CARD_COLUMNS = '(id,name,set_code,set_name,collector_number,artist,illustration_id,released_at,color_identity,type_line,frame_effects,border_color,promo,promo_types,foil,nonfoil,image_normal,image_large,tcgplayer)';
+const CARD_COLUMNS = '(id,name,set_code,set_name,collector_number,artist,illustration_id,released_at,color_identity,type_line,frame_effects,border_color,promo,promo_types,foil,nonfoil,image_normal,image_large,tcgplayer,usd,usd_foil)';
 
 // ─── HTTP helper (follows one level of redirect) ─────────────────────────────
 
@@ -45,6 +48,45 @@ function httpGet(url) {
         resolve(Buffer.concat(chunks).toString('utf8'));
       });
       res.on('error', reject);
+    });
+    req.on('error', reject);
+  });
+}
+
+// ─── Streaming bulk download ──────────────────────────────────────────────────
+
+// Scryfall's default_cards bulk now exceeds Node's max string length (~512 MB),
+// so we can't buffer it and call toString()/JSON.parse(). Instead we stream the
+// HTTP response straight through a JSON parser, slimming + filtering each card as
+// it arrives. Returns the array of slim cards (non-game layouts dropped).
+function fetchBulkCards(url) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https') ? https : http;
+    const req = client.get(url, { headers: { 'User-Agent': 'MagicArtViewer/1.0 (local sync)', 'Accept': 'application/json' } }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        req.destroy();
+        return resolve(fetchBulkCards(res.headers.location));
+      }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+      }
+
+      let received = 0;
+      res.on('data', chunk => {
+        received += chunk.length;
+        process.stdout.write(`\r  Downloaded ${(received / 1024 / 1024).toFixed(1)} MB...`);
+      });
+
+      const slim = [];
+      const pipeline = chain([
+        res,
+        parser(),
+        streamArray(),
+        ({ value }) => (SKIP_LAYOUTS.has(value.layout) ? null : pickFields(value)),
+      ]);
+      pipeline.on('data', card => { if (card) slim.push(card); });
+      pipeline.on('end', () => { process.stdout.write('\n'); resolve(slim); });
+      pipeline.on('error', reject);
     });
     req.on('error', reject);
   });
@@ -89,6 +131,10 @@ function pickFields(card) {
       normal: getImageUri(card, 'normal'),
       large:  getImageUri(card, 'large'),
     },
+    prices: {
+      usd:      card.prices?.usd      || null,
+      usd_foil: card.prices?.usd_foil || null,
+    },
     purchase_uris: card.purchase_uris?.tcgplayer
       ? { tcgplayer: card.purchase_uris.tcgplayer }
       : null,
@@ -112,7 +158,8 @@ function cardTuple(c) {
     `${esc(JSON.stringify(c.promo_types || []))},` +
     `${c.foil ? 1 : 0},${c.nonfoil ? 1 : 0},` +
     `${esc(c.image_uris?.normal)},${esc(c.image_uris?.large)},` +
-    `${esc(c.purchase_uris?.tcgplayer)})`;
+    `${esc(c.purchase_uris?.tcgplayer)},` +
+    `${esc(c.prices?.usd)},${esc(c.prices?.usd_foil)})`;
 }
 
 // The searchable [face_name, card_id] rows for a card (full name + each face).
@@ -128,6 +175,6 @@ function cardNameRows(c) {
 
 module.exports = {
   BULK_DATA_URL, BULK_TYPE, SKIP_LAYOUTS, CARD_COLUMNS,
-  httpGet, getImageUri, pickFields,
+  httpGet, fetchBulkCards, getImageUri, pickFields,
   esc, cardTuple, cardNameRows,
 };

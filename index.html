@@ -202,6 +202,63 @@
       color: #1a1a2e;
     }
 
+    /* Card Kingdom pill — blue accent to distinguish from TCGPlayer's gold */
+    .tcg-link.shop-cardkingdom {
+      color: #5aa9e6;
+      border-color: #5aa9e6;
+    }
+    .tcg-link.shop-cardkingdom:hover {
+      background: #5aa9e6;
+      color: #1a1a2e;
+    }
+
+    /* USD price under each art thumbnail; gold when showing a foil price */
+    .art-price {
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: #c9c9e0;
+      text-align: center;
+      margin-top: 0.15rem;
+    }
+    .art-price.foil-price { color: #e6a817; }
+
+    /* Buy-link group on each row's title line, sitting just after the F button */
+    .buy-group {
+      flex-shrink: 0;
+      display: inline-flex;
+      gap: 0.3rem;
+      margin-left: 0.1rem;
+    }
+
+    /* Top-level "buy all selected" bar under the Default foil toggle */
+    .buy-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.35rem;
+    }
+    .buy-bar-title {
+      font-size: 0.72rem;
+      color: #aaaacc;
+      width: 100%;
+    }
+    .shop-btn {
+      flex: 1;
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: #1a1a2e;
+      border: none;
+      border-radius: 5px;
+      padding: 0.3rem 0.5rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .shop-btn-tcg { background: #e6a817; }
+    .shop-btn-ck  { background: #5aa9e6; }
+    .shop-btn:hover:not(:disabled) { filter: brightness(1.1); }
+    .shop-btn:disabled { opacity: 0.4; cursor: default; }
+
     /* Frame type badge */
     .frame-badge {
       flex-shrink: 0;
@@ -366,14 +423,23 @@
       to { transform: rotate(360deg); }
     }
 
-    /* Sync footer */
+    /* Footer: affiliate/attribution disclosure + sync status */
+    .site-footer {
+      text-align: center;
+      padding: 2.5rem 1rem 2rem;
+    }
+    .affiliate-disclosure {
+      max-width: 640px;
+      margin: 0 auto;
+      font-size: 0.72rem;
+      color: #6a6a88;
+      line-height: 1.5;
+    }
+    .affiliate-disclosure a { color: #8a8ab0; }
     #sync-footer {
-      position: fixed;
-      bottom: 0.75rem;
-      left: 1rem;
+      margin-top: 0.6rem;
       font-size: 0.72rem;
       color: #444466;
-      pointer-events: none;
     }
 
     /* Remove row button */
@@ -562,6 +628,11 @@
           </span>
           Default foil
         </label>
+        <div class="buy-bar" id="buy-bar">
+          <span class="buy-bar-title">Buy all selected:</span>
+          <button class="shop-btn shop-btn-tcg" onclick="buyAllOn('tcgplayer')" disabled>TCGPlayer</button>
+          <button class="shop-btn shop-btn-ck" onclick="buyAllOn('cardkingdom')" disabled>Card Kingdom</button>
+        </div>
       </div>
     </div>
 
@@ -570,8 +641,15 @@
     <div id="results"></div>
   </div>
 
-  <!-- Sync status footer -->
-  <div id="sync-footer"></div>
+  <!-- Footer: disclosure + sync status -->
+  <footer class="site-footer">
+    <p class="affiliate-disclosure">
+      <span id="affiliate-line">Buy links are affiliate links — as affiliates we may earn from qualifying purchases. </span>
+      Card data and images courtesy of <a href="https://scryfall.com" target="_blank" rel="noopener noreferrer">Scryfall</a>.
+      Not affiliated with or endorsed by Wizards of the Coast.
+    </p>
+    <div id="sync-footer"></div>
+  </footer>
 
   <!-- Global loading overlay -->
   <div id="load-overlay">
@@ -585,6 +663,15 @@
   <script>
     const CONCURRENCY = 6;
 
+    // ─── Feature flags ─────────────────────────────────────────────────────────────
+    // Flip `prices` to true to re-enable the whole buy/price UI: per-card cost,
+    // the per-row TCG/CK pills, and the top "Buy all" bar with totals. Left off
+    // until the real affiliate links are wired in. (Price data still flows through
+    // the pipeline — this only controls the UI.)
+    const FEATURES = {
+      prices: false,
+    };
+
     // cardName → { card, element }
     const selectedCards = new Map();
     // cardName → { qty: number }  (shared object so stepper buttons mutate in place)
@@ -593,6 +680,8 @@
     const rawCards = new Map();
     // cardName → bool (true = show foil-only + shimmer)
     const foilState = new Map();
+    // cardName → fn(card): refresh that row's buy-link hrefs for the selected print
+    const buyLinkUpdaters = new Map();
     let hideSimArt = false;
     let defaultFoil = false;
 
@@ -729,6 +818,57 @@
       return null;
     }
 
+    // Formatted USD price for a printing. Shows the foil price when foil mode is on
+    // (or the print is foil-only); returns null when no price is available.
+    function formatPrice(card, foil) {
+      const p = card.prices || {};
+      const wantFoil = foil || (card.foil && !card.nonfoil);
+      const val = wantFoil ? (p.usd_foil ?? p.usd) : (p.usd ?? p.usd_foil);
+      return val != null ? '$' + Number(val).toFixed(2) : null;
+    }
+
+    // ─── Shops / affiliate buy links ───────────────────────────────────────────────
+    // Fill in each affiliate ID once you're approved by that program. A shop left
+    // null stays OFF — no button renders and nothing breaks until you opt in.
+    const SHOPS = {
+      // TCGPlayer — affiliate runs through Impact (impact.com). After approval, copy
+      // your deep-link base from the dashboard; it looks like:
+      //   https://partner.tcgplayer.com/c/<YOUR_MEDIA_ID>/1830156/21018
+      // While null, Scryfall's own purchase link is used (that revenue goes to Scryfall).
+      tcgplayer:   { label: 'TCG', title: 'Buy on TCGPlayer',    affiliateBase: null },
+      // Card Kingdom — affiliate via their partner program. After approval you get a
+      // partner code; we tag a name-search link with it. Verify the exact param names
+      // against your Card Kingdom affiliate dashboard.
+      cardkingdom: { label: 'CK',  title: 'Buy on Card Kingdom', partnerCode:   null }, // set to your Card Kingdom partner code once approved
+    };
+
+    // Each builder returns a buy URL, or null if unavailable / not configured.
+    function tcgplayerUrl(card) {
+      const src = card.purchase_uris?.tcgplayer;
+      if (!src) return null;
+      const base = SHOPS.tcgplayer.affiliateBase;
+      if (!base) return src; // not configured → fall back to Scryfall's link
+      try {
+        const dest = new URL(src).searchParams.get('u'); // the real tcgplayer.com product URL
+        return dest ? `${base}?subId1=mav&u=${encodeURIComponent(dest)}` : src;
+      } catch { return src; }
+    }
+
+    function cardKingdomUrl(card) {
+      const code = SHOPS.cardkingdom.partnerCode;
+      if (!code) return null; // off until configured
+      const cardName = (card.name || '').split(' // ')[0]; // search by front-face name
+      const params = new URLSearchParams({
+        search: 'header',
+        'filter[name]': cardName,
+        partner: code,
+        utm_source: code,
+        utm_medium: 'affiliate',
+        utm_campaign: code,
+      });
+      return `https://www.cardkingdom.com/catalog/search?${params}`;
+    }
+
     // Returns { label, cssClass } for a notable frame variant, or null for base prints
     function getFrameLabel(card) {
       const fe = card.frame_effects || [];
@@ -757,12 +897,13 @@
 
     function getFilteredCards(cardName) {
       let cards = rawCards.get(cardName) || [];
-      // When foil mode is active, restrict to foil-available printings only
-      if (foilState.get(cardName)) {
-        const foilCards = cards.filter(c => c.foil);
-        // Fall back to all printings if none have foil data (e.g. DB not yet re-synced)
-        if (foilCards.length > 0) cards = foilCards;
-      }
+      // Restrict to printings available in the requested finish:
+      //   F on  → foil-available prints (c.foil)
+      //   F off → nonfoil-available prints (c.nonfoil)
+      const wantFoil = !!foilState.get(cardName);
+      const finishCards = cards.filter(c => (wantFoil ? c.foil : c.nonfoil));
+      // Fall back to all printings if none match, so the row never goes empty.
+      if (finishCards.length > 0) cards = finishCards;
       if (!hideSimArt) return cards;
       const seen = new Set();
       return cards.filter(c => {
@@ -838,6 +979,7 @@
       if (prev) prev.element.classList.remove('selected');
       artElement.classList.add('selected');
       selectedCards.set(cardName, { card, element: artElement });
+      buyLinkUpdaters.get(cardName)?.(card); // point this row's buy links at the selected print
       updateExportButton();
     }
 
@@ -857,9 +999,11 @@
       const count = selectedCards.size;
       btn.disabled    = count === 0;
       btn.textContent = count > 0 ? `Export Selected (${count})` : 'Export Selected';
+      updateBuyBar();
     }
 
-    function exportSelected() {
+    // TCGPlayer mass-entry lines for every selected print (qty > 0).
+    function buildExportLines() {
       const lines = [];
       for (const [name, { card }] of selectedCards) {
         const qty = quantities.get(name)?.qty ?? 1;
@@ -869,8 +1013,98 @@
         const foil = foilState.get(name) || false;
         lines.push(`${qty} ${name} [${set}] ${cn}${foil ? ' *F*' : ''}`.trim());
       }
-      navigator.clipboard.writeText(lines.join('\n'))
+      return lines;
+    }
+
+    function exportSelected() {
+      navigator.clipboard.writeText(buildExportLines().join('\n'))
         .then(() => showToast('Copied to clipboard!'));
+    }
+
+    // "quantity name [SET]" per selected card, joined with || — the format
+    // TCGPlayer mass entry accepts in its ?c= pre-fill parameter.
+    function tcgMassEntryList() {
+      const entries = [];
+      for (const [name, { card }] of selectedCards) {
+        const qty = quantities.get(name)?.qty ?? 1;
+        if (qty === 0) continue;
+        const set = (card.set || '').toUpperCase();
+        entries.push(set ? `${qty} ${name} [${set}]` : `${qty} ${name}`);
+      }
+      return entries.join('||');
+    }
+
+    // Top-level "buy all selected". TCGPlayer's mass-entry page pre-fills directly
+    // from the URL; Card Kingdom has no URL pre-fill, so we copy + open for paste.
+    function buyAllOn(shopKey) {
+      if (selectedCards.size === 0) return;
+      const dest = shopBulkUrl(shopKey);
+      if (shopKey === 'tcgplayer') {
+        showToast(`Opening TCGPlayer with ${selectedCards.size} card${selectedCards.size > 1 ? 's' : ''}…`);
+      } else {
+        navigator.clipboard.writeText(buildExportLines().join('\n'))
+          .then(() => showToast(`List copied — paste into ${SHOPS[shopKey].title.replace('Buy on ', '')}`));
+      }
+      window.open(dest, '_blank', 'noopener,noreferrer'); // sync call → not popup-blocked
+    }
+
+    // Where "buy all" sends the user, routed through your affiliate link when set.
+    function shopBulkUrl(shopKey) {
+      if (shopKey === 'tcgplayer') {
+        const params = new URLSearchParams({ c: tcgMassEntryList(), productline: 'Magic' });
+        const massEntry = `https://www.tcgplayer.com/massentry?${params}`;
+        const base = SHOPS.tcgplayer.affiliateBase;
+        return base ? `${base}?u=${encodeURIComponent(massEntry)}` : massEntry;
+      }
+      if (shopKey === 'cardkingdom') {
+        const builder = 'https://www.cardkingdom.com/builder';
+        const code = SHOPS.cardkingdom.partnerCode;
+        if (!code) return builder;
+        const params = new URLSearchParams({ partner: code, utm_source: code, utm_medium: 'affiliate', utm_campaign: code });
+        return `${builder}?${params}`;
+      }
+      return '#';
+    }
+
+    // Sum of (qty × price) over selected cards, using each card's foil/nonfoil
+    // price per its F state. allPriced=false if any selected card lacks a price.
+    function selectedTotalUsd() {
+      let total = 0, allPriced = true;
+      for (const [name, { card }] of selectedCards) {
+        const qty = quantities.get(name)?.qty ?? 1;
+        if (qty === 0) continue;
+        const p = card.prices || {};
+        const wantFoil = foilState.get(name) || (card.foil && !card.nonfoil);
+        const val = wantFoil ? (p.usd_foil ?? p.usd) : (p.usd ?? p.usd_foil);
+        if (val == null) { allPriced = false; continue; }
+        total += Number(val) * qty;
+      }
+      return { total, allPriced };
+    }
+
+    // Refresh the top buy-bar button labels with the estimated total cost.
+    // TCGPlayer reflects market (Scryfall) USD; Card Kingdom shows the same figure
+    // as an estimate (~) since we have no Card Kingdom price feed.
+    function updateBuyBar() {
+      const tcgBtn = document.querySelector('.shop-btn-tcg');
+      const ckBtn  = document.querySelector('.shop-btn-ck');
+      if (!tcgBtn || !ckBtn) return;
+      const count = selectedCards.size;
+      tcgBtn.disabled = ckBtn.disabled = count === 0;
+      if (count === 0) {
+        tcgBtn.textContent = 'TCGPlayer';
+        ckBtn.textContent  = 'Card Kingdom';
+        return;
+      }
+      if (FEATURES.prices) {
+        const { total, allPriced } = selectedTotalUsd();
+        const money = '$' + total.toFixed(2);
+        tcgBtn.textContent = `TCGPlayer · ${allPriced ? '' : '~'}${money}`;
+        ckBtn.textContent  = `Card Kingdom · ~${money}`;
+      } else {
+        tcgBtn.textContent = 'TCGPlayer';
+        ckBtn.textContent  = 'Card Kingdom';
+      }
     }
 
     function showToast(message) {
@@ -958,7 +1192,6 @@
         const setName   = card.set_name || (card.set || '').toUpperCase();
         const artist    = card.artist || '';
         const metaLabel = artist ? `${setName} — ${artist}` : setName;
-        const tcgUrl    = card.purchase_uris?.tcgplayer || null;
 
         const artCard = document.createElement('div');
         artCard.className = 'art-card';
@@ -1004,18 +1237,16 @@
           meta.appendChild(badge);
         }
 
-        if (tcgUrl) {
-          const tcgLink = document.createElement('a');
-          tcgLink.href      = tcgUrl;
-          tcgLink.target    = '_blank';
-          tcgLink.rel       = 'noopener noreferrer';
-          tcgLink.className = 'tcg-link';
-          tcgLink.textContent = 'TCG';
-          tcgLink.title = 'Buy on TCGPlayer';
-          meta.appendChild(tcgLink);
+        artCard.appendChild(meta);
+
+        if (FEATURES.prices) {
+          const priceStr = formatPrice(card, foilActive);
+          const priceEl = document.createElement('div');
+          priceEl.className = 'art-price' + (priceStr && (foilActive || (card.foil && !card.nonfoil)) ? ' foil-price' : '');
+          priceEl.textContent = priceStr || '—';
+          artCard.appendChild(priceEl);
         }
 
-        artCard.appendChild(meta);
         scrollContainer.appendChild(artCard);
 
         if (card.id === defaultCard?.id) defaultEl = artCard;
@@ -1067,6 +1298,7 @@
         quantities.delete(name);
         rawCards.delete(name);
         foilState.delete(name);
+        buyLinkUpdaters.delete(name);
         row.remove();
         updateExportButton();
       });
@@ -1104,6 +1336,33 @@
         rebuildRowScroll(row);
       });
       label.appendChild(foilBtn);
+
+      // ── Buy links — one set per row, reflecting the selected print/foil ──
+      if (FEATURES.prices) {
+        const buyGroup = document.createElement('span');
+        buyGroup.className = 'buy-group';
+        const buyEls = {};
+        for (const key of ['tcgplayer', 'cardkingdom']) {
+          const a = document.createElement('a');
+          a.className = 'tcg-link shop-' + key;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer sponsored';
+          a.textContent = SHOPS[key].label;
+          a.title = SHOPS[key].title;
+          a.style.display = 'none'; // shown once a URL exists for the selected print
+          buyEls[key] = a;
+          buyGroup.appendChild(a);
+        }
+        buyLinkUpdaters.set(name, (card) => {
+          const urls = { tcgplayer: tcgplayerUrl(card), cardkingdom: cardKingdomUrl(card) };
+          for (const key of ['tcgplayer', 'cardkingdom']) {
+            if (urls[key]) { buyEls[key].href = urls[key]; buyEls[key].style.display = ''; }
+            else { buyEls[key].removeAttribute('href'); buyEls[key].style.display = 'none'; }
+          }
+        });
+        label.appendChild(buyGroup);
+      }
+
       row.appendChild(label);
 
       // Store metadata for sort + rebuild
@@ -1122,10 +1381,12 @@
       btnMinus.addEventListener('click', () => {
         qtyState.qty = Math.max(1, qtyState.qty - 1);
         qtyDisplay.textContent = qtyState.qty;
+        updateBuyBar();
       });
       btnPlus.addEventListener('click', () => {
         qtyState.qty++;
         qtyDisplay.textContent = qtyState.qty;
+        updateBuyBar();
       });
 
       // ── Art scroll row (apply dedup filter if active) ──
@@ -1300,6 +1561,13 @@
     document.getElementById('cardInput').addEventListener('keydown', e => {
       if (e.key === 'Enter' && e.ctrlKey) loadCards();
     });
+
+    // While the buy/price feature is flagged off, drop its UI: the top "Buy all"
+    // bar and the affiliate-disclosure line (Scryfall/WotC attribution stays).
+    if (!FEATURES.prices) {
+      document.getElementById('buy-bar')?.remove();
+      document.getElementById('affiliate-line')?.remove();
+    }
 
     // Show sync date in footer
     fetch('/api/sync-status')

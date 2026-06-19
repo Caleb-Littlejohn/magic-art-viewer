@@ -55,7 +55,9 @@ CREATE TABLE cards (
   nonfoil          INTEGER DEFAULT 1,
   image_normal     TEXT,
   image_large      TEXT,
-  tcgplayer        TEXT
+  tcgplayer        TEXT,
+  usd              TEXT,
+  usd_foil         TEXT
 );
 
 CREATE TABLE card_names (
