@@ -26,7 +26,8 @@ async function main() {
   const entry = index.data.find(d => d.type === BULK_TYPE);
   if (!entry) throw new Error(`Could not find "${BULK_TYPE}" in bulk-data index`);
 
-  const downloadUri = entry.download_uri;
+  const downloadUri = entry.jsonl_download_uri;
+  if (!downloadUri) throw new Error('Bulk-data entry has no jsonl_download_uri — has the Scryfall API changed again?');
   const updatedAt   = entry.updated_at;
   const sizeMB      = ((entry.compressed_size || entry.size || 0) / 1024 / 1024).toFixed(0);
 

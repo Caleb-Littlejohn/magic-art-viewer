@@ -10,9 +10,9 @@
 
 const https = require('https');
 const http  = require('http');
-const { chain }       = require('stream-chain');
-const { parser }      = require('stream-json');
-const { streamArray } = require('stream-json/streamers/StreamArray');
+const zlib  = require('zlib');
+const { chain }  = require('stream-chain');
+const { parser } = require('stream-json/jsonl/Parser');
 
 const BULK_DATA_URL = 'https://api.scryfall.com/bulk-data';
 const BULK_TYPE     = 'default_cards';
@@ -55,14 +55,14 @@ function httpGet(url) {
 
 // ─── Streaming bulk download ──────────────────────────────────────────────────
 
-// Scryfall's default_cards bulk now exceeds Node's max string length (~512 MB),
-// so we can't buffer it and call toString()/JSON.parse(). Instead we stream the
-// HTTP response straight through a JSON parser, slimming + filtering each card as
-// it arrives. Returns the array of slim cards (non-game layouts dropped).
+// Scryfall bulk files are gzipped JSONL (one card object per line) — too large
+// to buffer, so we stream the HTTP response through gunzip and a JSONL parser,
+// slimming + filtering each card as it arrives. Returns the array of slim cards
+// (non-game layouts dropped).
 function fetchBulkCards(url) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
-    const req = client.get(url, { headers: { 'User-Agent': 'MagicArtViewer/1.0 (local sync)', 'Accept': 'application/json' } }, res => {
+    const req = client.get(url, { headers: { 'User-Agent': 'MagicArtViewer/1.0 (local sync)', 'Accept': '*/*' } }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         req.destroy();
         return resolve(fetchBulkCards(res.headers.location));
@@ -80,8 +80,8 @@ function fetchBulkCards(url) {
       const slim = [];
       const pipeline = chain([
         res,
+        zlib.createGunzip(),
         parser(),
-        streamArray(),
         ({ value }) => (SKIP_LAYOUTS.has(value.layout) ? null : pickFields(value)),
       ]);
       pipeline.on('data', card => { if (card) slim.push(card); });

@@ -77,8 +77,9 @@ async function main() {
   }
 
   // 4. Download + stream-parse + slim the fresh bulk.
-  console.log(`\nDownloading ${entry.download_uri}`);
-  const slim = await fetchBulkCards(entry.download_uri);
+  if (!entry.jsonl_download_uri) throw new Error('Bulk-data entry has no jsonl_download_uri — has the Scryfall API changed again?');
+  console.log(`\nDownloading ${entry.jsonl_download_uri}`);
+  const slim = await fetchBulkCards(entry.jsonl_download_uri);
   console.log(`  ${slim.length.toLocaleString()} cards after filtering non-game layouts.`);
 
   // 5. Diff: keep cards whose serialized form differs from the previous snapshot.
