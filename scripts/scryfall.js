@@ -141,6 +141,24 @@ function pickFields(card) {
   };
 }
 
+// ─── Change detection ────────────────────────────────────────────────────────
+
+// Fields Scryfall re-publishes nightly for essentially the whole corpus.
+// Prices move every day, so folding them into the change key makes ~87k of
+// ~111k cards read as "changed" every night and turns the nightly delta into a
+// full table rewrite. Excluded by default; they still ride along in the row
+// whenever a card changes for a real reason.
+const VOLATILE_FIELDS = ['prices'];
+
+// Serialized form of a slim card, used to decide whether it changed.
+// withVolatile=true compares everything (see sync-delta.js --with-prices).
+function changeKey(card, withVolatile = false) {
+  if (withVolatile) return JSON.stringify(card);
+  const stable = { ...card };
+  for (const f of VOLATILE_FIELDS) delete stable[f];
+  return JSON.stringify(stable);
+}
+
 // ─── SQL serialization ──────────────────────────────────────────────────────
 
 function esc(v) {
@@ -176,5 +194,6 @@ function cardNameRows(c) {
 module.exports = {
   BULK_DATA_URL, BULK_TYPE, SKIP_LAYOUTS, CARD_COLUMNS,
   httpGet, fetchBulkCards, getImageUri, pickFields,
+  VOLATILE_FIELDS, changeKey,
   esc, cardTuple, cardNameRows,
 };

@@ -65,6 +65,7 @@ CREATE TABLE card_names (
   card_id   TEXT NOT NULL
 );
 CREATE INDEX idx_card_names ON card_names (face_name);
+CREATE INDEX idx_card_names_card_id ON card_names (card_id); -- nightly delta deletes by card_id
 
 CREATE TABLE meta (
   key   TEXT PRIMARY KEY,

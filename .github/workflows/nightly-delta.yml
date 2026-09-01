@@ -23,10 +23,17 @@ jobs:
           node-version: 20
 
       # Carry cards.json between nightly runs so we can diff against yesterday.
-      # Rolling cache: each run writes a new key, restore-keys picks the latest
-      # prior snapshot. A miss (e.g. first run) just produces a full delta.
+      # Rolling cache: each run saves under a new key, restore-keys picks the
+      # latest prior snapshot. A miss trips the --max-changes guard in
+      # sync-delta.js rather than silently rewriting the whole table.
+      #
+      # Restore and save are deliberately split (rather than the combined
+      # actions/cache action): the snapshot must only move forward once the rows
+      # are actually in D1. The combined action's post-step saves even when a
+      # later step failed, which would advance the snapshot past changes that
+      # never landed — they'd never be re-emitted, leaving D1 silently stale.
       - name: Restore previous snapshot
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             cards.json
@@ -50,3 +57,15 @@ jobs:
       - name: No changes
         if: hashFiles('cards-delta.sql') == ''
         run: echo "No new or changed cards tonight — nothing to apply."
+
+      # Only reached when every step above succeeded, so the snapshot we save is
+      # guaranteed to match what D1 now contains. On failure nothing is saved and
+      # tomorrow's run re-diffs from the same point, retrying tonight's changes.
+      - name: Save snapshot for tomorrow
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            cards.json
+            cards-meta.json
+          key: scryfall-snapshot-${{ github.run_id }}
